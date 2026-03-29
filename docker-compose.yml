@@ -1,0 +1,12 @@
+services:
+  tomato-ai:
+    build: .
+    container_name: smart-tomato-helper
+    ports:
+      - "8501:8501"
+    restart: unless-stopped
+    environment:
+      - STREAMLIT_SERVER_HEADLESS=true
+    volumes:
+      # Mount models directory so you can update models without rebuilding
+      - ./models:/app/models

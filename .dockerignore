@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+*.exe
+*.txt
+!requirements.txt
+*.docx
+cert_err.txt
+cols.txt
+out.txt
+final_train_log.txt
+debug_fix.py
+test_st.py
+ACCURACY_IMPROVEMENTS.md

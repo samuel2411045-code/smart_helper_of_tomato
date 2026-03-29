@@ -1,0 +1,35 @@
+WARNING:tensorflow:From C:\Users\samue\AppData\Local\Programs\Python\Python310\lib\site-packages\keras\src\losses.py:2976: The name tf.losses.sparse_softmax_cross_entropy is deprecated. Please use tf.compat.v1.losses.sparse_softmax_cross_entropy instead.
+
+WARNING:tensorflow:From C:\Users\samue\AppData\Local\Programs\Python\Python310\lib\site-packages\keras\src\backend.py:1398: The name tf.executing_eagerly_outside_functions is deprecated. Please use tf.compat.v1.executing_eagerly_outside_functions instead.
+
+WARNING:tensorflow:From C:\Users\samue\AppData\Local\Programs\Python\Python310\lib\site-packages\keras\src\optimizers\__init__.py:309: The name tf.train.Optimizer is deprecated. Please use tf.compat.v1.train.Optimizer instead.
+
+Training TabNet Feature Learner for Fertilizer...
+WARNING:tensorflow:From C:\Users\samue\AppData\Local\Programs\Python\Python310\lib\site-packages\keras\src\engine\base_layer_utils.py:384: The name tf.executing_eagerly_outside_functions is deprecated. Please use tf.compat.v1.executing_eagerly_outside_functions instead.
+
+WARNING:tensorflow:From C:\Users\samue\AppData\Local\Programs\Python\Python310\lib\site-packages\keras\src\utils\tf_utils.py:492: The name tf.ragged.RaggedTensorValue is deprecated. Please use tf.compat.v1.ragged.RaggedTensorValue instead.
+
+
+  1/250 [..............................] - ETA: 20s
+ 45/250 [====>.........................] - ETA: 0s 
+ 89/250 [=========>....................] - ETA: 0s
+135/250 [===============>..............] - ETA: 0s
+176/250 [====================>.........] - ETA: 0s
+223/250 [=========================>....] - ETA: 0s
+250/250 [==============================] - 0s 1ms/step
+
+ 1/63 [..............................] - ETA: 3s
+41/63 [==================>...........] - ETA: 0s
+63/63 [==============================] - 0s 1ms/step
+Training XGBoost Classifier for Fertilizer...
+FERT ERROR:
+Traceback (most recent call last):
+  File "D:\STUDY PROJECT\tomato-ai-project\debug_fix.py", line 6, in <module>
+    fr.train_recommender()
+  File "D:\STUDY PROJECT\tomato-ai-project\fertilizer_hybrid.py", line 46, in train_recommender
+    clf.fit(X_train_feat, y_train)
+  File "C:\Users\samue\AppData\Local\Programs\Python\Python310\lib\site-packages\xgboost\core.py", line 751, in inner_f
+    return func(**kwargs)
+  File "C:\Users\samue\AppData\Local\Programs\Python\Python310\lib\site-packages\xgboost\sklearn.py", line 1761, in fit
+    raise ValueError(
+ValueError: Invalid classes inferred from unique values of `y`.  Expected: [   0    1    2 ... 6844 6845 6846], got [   0    1    2 ... 8281 8282 8283]
