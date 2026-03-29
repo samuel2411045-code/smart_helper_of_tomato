@@ -1,0 +1,66 @@
+{
+    "Disease Detection": {
+        "MobileNetV2 + XGBoost": {
+            "model": "MobileNetV2 + XGBoost",
+            "accuracy": 0.36755386565272496,
+            "f1_score": 0.3062030401446078,
+            "training_time_sec": 630.7380740642548,
+            "inference_speed_ms": 399.7072712701234,
+            "improvement": "baseline"
+        },
+        "MobileNetV2 Alone": {
+            "model": "MobileNetV2 Alone",
+            "accuracy": 0.9991132616996765,
+            "training_time_sec": 44476.11979866028,
+            "improvement": "faster & better"
+        }
+    },
+    "Yield Prediction": {
+        "TabNet + XGBoost": {
+            "model": "TabNet + XGBoost",
+            "r2_score": 0.057007311744794786,
+            "rmse": 82705.25758092826,
+            "mae": 63323.14719419366,
+            "training_time_sec": 207.7703218460083,
+            "improvement": "faster & better"
+        },
+        "TabNet Alone": {
+            "model": "TabNet Alone",
+            "r2_score": -0.0007764013383044777,
+            "training_time_sec": 471.89669585227966,
+            "improvement": "baseline"
+        }
+    },
+    "Soil Prediction": {
+        "RF + Gradient Boosting": {
+            "model": "RF + Gradient Boosting",
+            "accuracy": 0.9977272727272727,
+            "balanced_accuracy": 0.996078431372549,
+            "f1_score": 0.9977227298023105,
+            "training_time_sec": 19.73208451271057,
+            "improvement": "faster & better"
+        },
+        "Random Forest Alone": {
+            "model": "Random Forest Alone",
+            "accuracy": 0.9977272727272727,
+            "balanced_accuracy": 0.996078431372549,
+            "training_time_sec": 3.813972234725952,
+            "improvement": "baseline"
+        }
+    },
+    "Fertilizer Recommendation": {
+        "TabNet + XGBoost": {
+            "model": "TabNet + XGBoost",
+            "accuracy": 0.8105,
+            "balanced_accuracy": 0.6530217283141574,
+            "f1_score": 0.8187903627449277,
+            "training_time_sec": 709.9626984596252,
+            "improvement": "baseline"
+        },
+        "Baseline (Single XGB)": {
+            "accuracy": 0.88,
+            "training_time_sec": 12,
+            "improvement": "faster & better"
+        }
+    }
+}
