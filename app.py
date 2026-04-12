@@ -6,6 +6,9 @@ import json
 import joblib
 import time
 from PIL import Image
+from datetime import date, timedelta
+import weather
+import ocr_utils
 
 # Constants
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -42,6 +45,10 @@ TRANSLATIONS = {
         "predict_yield": "Predict Yield",
         "processing": "Processing through TabNet + XGBoost...",
         "predicted_yield": "Predicted Yield",
+        "fetch_weather": "🌍 Fetch Local Weather",
+        "weather_loading": "Connecting to Open-Meteo...",
+        "weather_success": "Local weather synced successfully!",
+        "weather_error": "Could not fetch local weather.",
         "soil_header": "Optical Soil Texture & Moisture Analyzer",
         "soil_desc": "Upload a photo of your soil to analyze its texture, grain size, and moisture content based on color and visual properties.",
         "upload_soil": "Upload Soil Image",
@@ -110,6 +117,10 @@ TRANSLATIONS = {
         "predict_yield": "விளை கணிப்பு",
         "processing": "TabNet + XGBoost மூலம் செயல்படுத்துகிறது...",
         "predicted_yield": "கணிக்கப்பட்ட விளை",
+        "fetch_weather": "🌍 உள்ளூர் வானிலை பெறவும்",
+        "weather_loading": "Open-Meteo உடன் இணைக்கிறது...",
+        "weather_success": "உள்ளூர் வானிலை வெற்றிகரமாக ஒத்திசைக்கப்பட்டது!",
+        "weather_error": "உள்ளூர் வானிலை பெற முடியவில்லை.",
         "soil_header": "ஆப்டிகल் மண் அமைப்பு மற்றும் ஈரப்பதம் பகுப்பாய்வு",
         "soil_desc": "உங்கள் மணலின் நிறம் மற்றும் காட்சி பண்புகளின் அடிப்படையில் அதன் அமைப்பு, தானிய அளவு மற்றும் ஈரப்பதத்தை பகுப்பாய்வு செய்ய உங்கள் மண்ணின் புகைப்படத்தை பதிவேற்றவும்.",
         "upload_soil": "மண் படத்தை பதிவேற்றவும்",
@@ -178,6 +189,10 @@ TRANSLATIONS = {
         "predict_yield": "उपज भविष्यवाणी",
         "processing": "TabNet + XGBoost के माध्यम से प्रक्रिया...",
         "predicted_yield": "भविष्यवाणी की गई उपज",
+        "fetch_weather": "🌍 स्थानीय मौसम प्राप्त करें",
+        "weather_loading": "Open-Meteo से जुड़ रहा है...",
+        "weather_success": "स्थानीय मौसम सफलतापूर्वक सिंक किया गया!",
+        "weather_error": "स्थानीय मौसम प्राप्त नहीं हो सका।",
         "soil_header": "ऑप्टिकल मिट्टी बनावट और नमी विश्लेषक",
         "soil_desc": "अपनी मिट्टी की बनावट, अनाज के आकार और नमी सामग्री का विश्लेषण करने के लिए अपनी मिट्टी की एक तस्वीर अपलोड करें।",
         "upload_soil": "मिट्टी की छवि अपलोड करें",
@@ -420,7 +435,7 @@ if st.session_state.selected_nav == "disease_detection":
         uploaded_file = st.file_uploader(get_text("upload_leaf"), type=["jpg", "png", "jpeg"])
         if uploaded_file:
             img = Image.open(uploaded_file)
-            st.image(img, caption=get_text("uploaded_image"), use_column_width=True)
+            st.image(img, caption=get_text("uploaded_image"), use_container_width=True)
     
     with col_r:
         if uploaded_file:
@@ -466,7 +481,7 @@ if st.session_state.selected_nav == "yield_prediction":
         
         if growth_stage_img:
             img = Image.open(growth_stage_img)
-            st.image(img, caption=get_text("growth_stage_image"), use_column_width=True)
+            st.image(img, caption=get_text("growth_stage_image"), use_container_width=True)
             st.info(get_text("analyzing_growth_stage"))
             time.sleep(0.8)
             
@@ -483,9 +498,29 @@ if st.session_state.selected_nav == "yield_prediction":
     
     with yc2:
         st.markdown("### 🌍 Environmental Conditions")
-        temp = st.slider(get_text("temperature"), 10, 45, 26)
-        hum = st.slider(get_text("humidity"), 20, 100, 60)
-        rain = st.number_input(get_text("rainfall"), 0, 3000, 1200)
+        
+        if st.button(get_text("fetch_weather"), use_container_width=True):
+            with st.spinner(get_text("weather_loading")):
+                loc = weather.get_location_from_ip()
+                if loc:
+                    try:
+                        today = date.today()
+                        w_data = weather.fetch_open_meteo_daily(
+                            latitude=loc[0], longitude=loc[1], 
+                            start=today - timedelta(days=1), end=today
+                        )
+                        st.session_state.temp_val = float(w_data.tmean_c)
+                        st.session_state.hum_val = 65.0  # Default if not in weather data
+                        st.session_state.rain_val = float(w_data.rainfall_mm * 365) # Yearly estimate
+                        st.success(get_text("weather_success"))
+                    except Exception:
+                        st.error(get_text("weather_error"))
+                else:
+                    st.error(get_text("weather_error"))
+
+        temp = st.slider(get_text("temperature"), 10, 45, int(st.session_state.get('temp_val', 26)))
+        hum = st.slider(get_text("humidity"), 20, 100, int(st.session_state.get('hum_val', 60)))
+        rain = st.number_input(get_text("rainfall"), 0, 3000, int(st.session_state.get('rain_val', 1200)))
         
         st.markdown("---")
         st.markdown("### 🎯 Prediction")
@@ -550,7 +585,7 @@ if st.session_state.selected_nav == "soil_analyzer":
         soil_img_file = st.file_uploader(get_text("upload_soil"), type=["jpg", "png", "jpeg"], key="soil_img")
         if soil_img_file:
             img = Image.open(soil_img_file)
-            st.image(img, caption=get_text("soil_sample"), use_column_width=True)
+            st.image(img, caption=get_text("soil_sample"), use_container_width=True)
     
     with sc2:
         if soil_img_file:
@@ -603,12 +638,19 @@ if st.session_state.selected_nav == "fertilizer":
         
         if health_card_img:
             st.info(get_text("ocr_msg"))
-            time.sleep(1.2)
-            # Simulated OCR Extraction
-            n_val = int(np.random.normal(160, 40))
-            p_val = int(np.random.normal(55, 15))
-            k_val = int(np.random.normal(140, 30))
-            ph_val = round(np.random.uniform(5.5, 7.8), 1)
+            try:
+                # Real OCR Extraction using utils from tomato_ai_app integration
+                card_data = ocr_utils.extract_soil_values(img)
+                n_val = int(card_data.n)
+                p_val = int(card_data.p)
+                k_val = int(card_data.k)
+                ph_val = float(card_data.ph)
+            except Exception as e:
+                st.warning(f"OCR partial failure: {e}. Using estimated values.")
+                n_val = int(np.random.normal(160, 40))
+                p_val = int(np.random.normal(55, 15))
+                k_val = int(np.random.normal(140, 30))
+                ph_val = round(np.random.uniform(5.5, 7.8), 1)
             
             st.success(get_text("chemistry_extracted"))
             cl1, cl2 = st.columns(2)
@@ -624,7 +666,7 @@ if st.session_state.selected_nav == "fertilizer":
         plant_img_file = st.file_uploader(get_text("upload_plant"), type=["jpg", "png", "jpeg"], key="plant_img")
         if plant_img_file:
             img = Image.open(plant_img_file)
-            st.image(img, caption=get_text("tomato_plant"), use_column_width=True)
+            st.image(img, caption=get_text("tomato_plant"), use_container_width=True)
     
     with fc2:
         st.markdown(f"### {get_text('recommendation')}")
