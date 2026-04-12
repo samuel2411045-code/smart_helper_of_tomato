@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import tensorflow as tf
+from tensorflow.keras import layers, models
 from tensorflow.keras.applications import MobileNetV2
 from tensorflow.keras.models import Model
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
@@ -128,9 +129,9 @@ class HybridDiseaseModel:
         for layer in self.base_model.layers[-20:]:
             layer.trainable = True
         
-        x = tf.keras.layers.Dense(256, activation='relu')(self.base_model.output)
-        x = tf.keras.layers.Dropout(0.5)(x)
-        x = tf.keras.layers.Dense(self.num_classes, activation='softmax')(x)
+        x = layers.Dense(256, activation='relu')(self.base_model.output)
+        x = layers.Dropout(0.5)(x)
+        x = layers.Dense(self.num_classes, activation='softmax')(x)
         model = Model(inputs=self.base_model.input, outputs=x)
         
         # Compile with better optimizer settings
