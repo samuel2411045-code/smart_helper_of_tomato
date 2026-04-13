@@ -1,0 +1,30 @@
+# Dataset images (too large for GitHub)
+data/Tomato Dataset/
+data/tomato_soil_data.csv
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Model files
+models/*.h5
+models/*.pkl
+*.h5
+*.pkl
+
+# PDF files
+*.pdf
+
+# Environment
+.env
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
