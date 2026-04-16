@@ -7,8 +7,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # System deps for OpenCV headless, HDF5, and general build tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        tesseract-ocr \
         libgl1 \
         libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
         libhdf5-dev \
     && rm -rf /var/lib/apt/lists/*
 
