@@ -42,40 +42,73 @@ class HybridSoilModel:
         self.save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
         os.makedirs(self.save_path, exist_ok=True)
 
-    def train_hybrid(self, X, y_type):
-        """Train Hybrid Model: RF (Feature Learning) + Gradient Boosting (Classification) with CV."""
-        X_train, X_val, y_train, y_val = train_test_split(X, y_type, test_size=0.2, random_state=42, stratify=y_type)
+    def train_hybrid(self, X, y_type, k_folds=5):
+        """Train Hybrid Model: RF (Feature Learning) + Gradient Boosting (Classification) with K-Fold Cross Validation."""
+        print(f"Training hybrid soil model with {k_folds}-fold cross-validation...")
         
-        # Scale features for GB (RF is scale-invariant)
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_val_scaled = self.scaler.transform(X_val)
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
         
-        start_time = time.time()
-        print("Training Random Forest Feature Learner...")
+        accuracies = []
+        balanced_accs = []
+        f1_scores = []
+        training_times = []
         
-        # Compute class weights for RF
-        class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+        fold = 1
+        for train_idx, val_idx in skf.split(X, y_type):
+            print(f"\n--- Fold {fold}/{k_folds} ---")
+            
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y_type[train_idx], y_type[val_idx]
+            
+            # Scale features for GB (RF is scale-invariant)
+            X_train_scaled = self.scaler.fit_transform(X_train)
+            X_val_scaled = self.scaler.transform(X_val)
+            
+            start_time = time.time()
+            
+            # Train Random Forest
+            class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+            self.rf_model.fit(X_train, y_train)
+            
+            # Create stacked features
+            rf_pred_train = self.rf_model.predict(X_train_scaled)
+            rf_proba_train = self.rf_model.predict_proba(X_train_scaled)
+            X_train_ext = np.column_stack((X_train_scaled, rf_proba_train))
+            
+            rf_pred_val = self.rf_model.predict(X_val_scaled)
+            rf_proba_val = self.rf_model.predict_proba(X_val_scaled)
+            X_val_ext = np.column_stack((X_val_scaled, rf_proba_val))
+            
+            # Train Gradient Boosting
+            self.gb_model.fit(X_train_ext, y_train)
+            training_time = time.time() - start_time
+            training_times.append(training_time)
+            
+            # Evaluate
+            y_pred = self.gb_model.predict(X_val_ext)
+            accuracy = accuracy_score(y_val, y_pred)
+            balanced_acc = balanced_accuracy_score(y_val, y_pred)
+            f1 = f1_score(y_val, y_pred, average='weighted', zero_division=0)
+            
+            accuracies.append(accuracy)
+            balanced_accs.append(balanced_acc)
+            f1_scores.append(f1)
+            
+            print(f"Fold {fold} - Acc: {accuracy:.4f}, Bal Acc: {balanced_acc:.4f}, F1: {f1:.4f}, Time: {training_time:.2f}s")
+            fold += 1
         
-        self.rf_model.fit(X_train, y_train)
+        # Train final model on all data
+        print("\nTraining final hybrid model on all data...")
+        X_scaled = self.scaler.fit_transform(X)
         
-        # Use RF predictions and probabilities as additional features for GB (Stacking)
-        print("Creating stacked features using RF predictions...")
-        rf_pred_train = self.rf_model.predict(X_train_scaled)
-        rf_proba_train = self.rf_model.predict_proba(X_train_scaled)
-        X_train_ext = np.column_stack((X_train_scaled, rf_proba_train))
+        class_weights = compute_class_weight('balanced', classes=np.unique(y_type), y=y_type)
+        self.rf_model.fit(X, y_type)
         
-        rf_pred_val = self.rf_model.predict(X_val_scaled)
-        rf_proba_val = self.rf_model.predict_proba(X_val_scaled)
-        X_val_ext = np.column_stack((X_val_scaled, rf_proba_val))
+        rf_pred_all = self.rf_model.predict(X_scaled)
+        rf_proba_all = self.rf_model.predict_proba(X_scaled)
+        X_ext = np.column_stack((X_scaled, rf_proba_all))
         
-        print("Training Gradient Boosting Classifier...")
-        self.gb_model.fit(X_train_ext, y_train)
-        training_time = time.time() - start_time
-        
-        y_pred = self.gb_model.predict(X_val_ext)
-        accuracy = accuracy_score(y_val, y_pred)
-        balanced_acc = balanced_accuracy_score(y_val, y_pred)
-        f1 = f1_score(y_val, y_pred, average='weighted', zero_division=0)
+        self.gb_model.fit(X_ext, y_type)
         
         # Save models
         joblib.dump(self.rf_model, os.path.join(self.save_path, "soil_rf.joblib"))
@@ -84,29 +117,60 @@ class HybridSoilModel:
         
         return {
             "model": "RF + Gradient Boosting",
-            "accuracy": accuracy,
-            "balanced_accuracy": balanced_acc,
-            "f1_score": f1,
-            "training_time_sec": training_time
+            "accuracy_mean": np.mean(accuracies),
+            "accuracy_std": np.std(accuracies),
+            "balanced_accuracy_mean": np.mean(balanced_accs),
+            "balanced_accuracy_std": np.std(balanced_accs),
+            "f1_mean": np.mean(f1_scores),
+            "f1_std": np.std(f1_scores),
+            "training_time_mean": np.mean(training_times),
+            "k_folds": k_folds
         }
 
-    def train_baseline(self, X, y):
-        """Train standalone RF for comparison with optimization."""
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    def train_baseline(self, X, y, k_folds=5):
+        """Train standalone RF for comparison with K-Fold Cross Validation."""
+        print(f"Training baseline soil model with {k_folds}-fold cross-validation...")
         
-        start_time = time.time()
-        self.rf_model.fit(X_train, y_train)
-        training_time = time.time() - start_time
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
         
-        y_pred = self.rf_model.predict(X_val)
-        accuracy = accuracy_score(y_val, y_pred)
-        balanced_acc = balanced_accuracy_score(y_val, y_pred)
+        accuracies = []
+        balanced_accs = []
+        training_times = []
+        
+        fold = 1
+        for train_idx, val_idx in skf.split(X, y):
+            print(f"\n--- Fold {fold}/{k_folds} ---")
+            
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            start_time = time.time()
+            self.rf_model.fit(X_train, y_train)
+            training_time = time.time() - start_time
+            training_times.append(training_time)
+            
+            y_pred = self.rf_model.predict(X_val)
+            accuracy = accuracy_score(y_val, y_pred)
+            balanced_acc = balanced_accuracy_score(y_val, y_pred)
+            
+            accuracies.append(accuracy)
+            balanced_accs.append(balanced_acc)
+            
+            print(f"Fold {fold} - Acc: {accuracy:.4f}, Bal Acc: {balanced_acc:.4f}, Time: {training_time:.2f}s")
+            fold += 1
+        
+        # Train final model on all data
+        print("\nTraining final baseline model on all data...")
+        self.rf_model.fit(X, y)
         
         return {
             "model": "Random Forest Alone",
-            "accuracy": accuracy,
-            "balanced_accuracy": balanced_acc,
-            "training_time_sec": training_time
+            "accuracy_mean": np.mean(accuracies),
+            "accuracy_std": np.std(accuracies),
+            "balanced_accuracy_mean": np.mean(balanced_accs),
+            "balanced_accuracy_std": np.std(balanced_accs),
+            "training_time_mean": np.mean(training_times),
+            "k_folds": k_folds
         }
 
 if __name__ == "__main__":

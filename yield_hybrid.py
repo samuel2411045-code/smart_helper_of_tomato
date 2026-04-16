@@ -67,25 +67,84 @@ class HybridYieldModel:
         )
         return model
 
-    def train_hybrid(self, X, y):
-        """Train Hybrid Model: TabNet (Features) + XGBoost (Prediction) with cross-validation."""
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    def train_hybrid(self, X, y, k_folds=5):
+        """Train Hybrid Model: TabNet (Features) + XGBoost (Prediction) with K-Fold Cross Validation."""
+        print(f"Training hybrid yield model with {k_folds}-fold cross-validation...")
         
-        # Scale features
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_val_scaled = self.scaler.transform(X_val)
+        kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
         
-        start_time = time.time()
-        print("Training TabNet Feature Learner...")
-        # Pre-train as autoencoder with validation
+        r2_scores = []
+        rmse_scores = []
+        mae_scores = []
+        training_times = []
+        
+        fold = 1
+        for train_idx, val_idx in kf.split(X):
+            print(f"\n--- Fold {fold}/{k_folds} ---")
+            
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            # Scale features
+            X_train_scaled = self.scaler.fit_transform(X_train)
+            X_val_scaled = self.scaler.transform(X_val)
+            
+            start_time = time.time()
+            
+            # Pre-train TabNet as autoencoder
+            targets = {
+                'latent': np.zeros((len(X_train_scaled), 128)),
+                'reconstruction': X_train_scaled
+            }
+            self.tabnet.fit(
+                X_train_scaled, targets,
+                epochs=100,
+                batch_size=16,
+                verbose=0,
+                validation_split=0.2,
+                callbacks=[
+                    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
+                    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                ]
+            )
+            
+            # Extract features
+            preds = self.tabnet.predict(X_train_scaled)
+            X_train_feat = preds['latent'] if isinstance(preds, dict) else preds[0]
+            
+            preds_val = self.tabnet.predict(X_val_scaled)
+            X_val_feat = preds_val['latent'] if isinstance(preds_val, dict) else preds_val[0]
+            
+            # Train XGBoost
+            self.xgb_model.fit(X_train_feat, y_train)
+            training_time = time.time() - start_time
+            training_times.append(training_time)
+            
+            # Evaluate
+            y_pred = self.xgb_model.predict(X_val_feat)
+            r2 = r2_score(y_val, y_pred)
+            rmse = np.sqrt(mean_squared_error(y_val, y_pred))
+            mae = mean_absolute_error(y_val, y_pred)
+            
+            r2_scores.append(r2)
+            rmse_scores.append(rmse)
+            mae_scores.append(mae)
+            
+            print(f"Fold {fold} - R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}, Time: {training_time:.2f}s")
+            fold += 1
+        
+        # Train final model on all data
+        print("\nTraining final hybrid model on all data...")
+        X_scaled = self.scaler.fit_transform(X)
+        
         targets = {
-            'latent': np.zeros((len(X_train_scaled), 128)),
-            'reconstruction': X_train_scaled
+            'latent': np.zeros((len(X_scaled), 128)),
+            'reconstruction': X_scaled
         }
         self.tabnet.fit(
-            X_train_scaled, targets,
-            epochs=100,  # Increased from 50
-            batch_size=16,  # Smaller batch for better learning
+            X_scaled, targets,
+            epochs=100,
+            batch_size=16,
             verbose=0,
             validation_split=0.2,
             callbacks=[
@@ -94,23 +153,10 @@ class HybridYieldModel:
             ]
         )
         
-        # Extract features
-        preds = self.tabnet.predict(X_train_scaled)
-        X_train_feat = preds['latent'] if isinstance(preds, dict) else preds[0]
+        preds = self.tabnet.predict(X_scaled)
+        X_feat = preds['latent'] if isinstance(preds, dict) else preds[0]
         
-        preds_val = self.tabnet.predict(X_val_scaled)
-        X_val_feat = preds_val['latent'] if isinstance(preds_val, dict) else preds_val[0]
-        
-        print("Training XGBoost Regressor with optimized parameters...")
-        self.xgb_model.fit(
-            X_train_feat, y_train
-        )
-        training_time = time.time() - start_time
-        
-        y_pred = self.xgb_model.predict(X_val_feat)
-        r2 = r2_score(y_val, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_val, y_pred))
-        mae = mean_absolute_error(y_val, y_pred)
+        self.xgb_model.fit(X_feat, y)
         
         # Save models
         joblib.dump(self.xgb_model, os.path.join(self.save_path, "yield_xgb.joblib"))
@@ -119,53 +165,103 @@ class HybridYieldModel:
         
         return {
             "model": "TabNet + XGBoost",
-            "r2_score": r2,
-            "rmse": rmse,
-            "mae": mae,
-            "training_time_sec": training_time
+            "r2_mean": np.mean(r2_scores),
+            "r2_std": np.std(r2_scores),
+            "rmse_mean": np.mean(rmse_scores),
+            "rmse_std": np.std(rmse_scores),
+            "mae_mean": np.mean(mae_scores),
+            "mae_std": np.std(mae_scores),
+            "training_time_mean": np.mean(training_times),
+            "k_folds": k_folds
         }
 
-    def train_baseline(self, X, y):
-        """Train standalone TabNet for comparison."""
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+    def train_baseline(self, X, y, k_folds=5):
+        """Train standalone TabNet for comparison with K-Fold Cross Validation."""
+        print(f"Training baseline yield model with {k_folds}-fold cross-validation...")
         
-        # Scale features
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_val_scaled = self.scaler.transform(X_val)
+        kf = KFold(n_splits=k_folds, shuffle=True, random_state=42)
         
-        # Add regression head to tabnet output
+        r2_scores = []
+        training_times = []
+        
+        fold = 1
+        for train_idx, val_idx in kf.split(X):
+            print(f"\n--- Fold {fold}/{k_folds} ---")
+            
+            X_train, X_val = X[train_idx], X[val_idx]
+            y_train, y_val = y[train_idx], y[val_idx]
+            
+            # Scale features
+            X_train_scaled = self.scaler.fit_transform(X_train)
+            X_val_scaled = self.scaler.transform(X_val)
+            
+            # Add regression head to tabnet output
+            latent_output = self.tabnet.output['latent']
+            x = layers.Dense(32, activation='relu')(latent_output)
+            x = layers.Dropout(0.3)(x)
+            out = layers.Dense(1)(x)
+            model = models.Model(inputs=self.tabnet.input, outputs=out)
+            model.compile(
+                optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+                loss='mse',
+                metrics=['mae']
+            )
+            
+            start_time = time.time()
+            model.fit(
+                X_train_scaled, y_train,
+                epochs=150,
+                batch_size=16,
+                verbose=0,
+                validation_data=(X_val_scaled, y_val),
+                callbacks=[
+                    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True),
+                    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                ]
+            )
+            training_time = time.time() - start_time
+            training_times.append(training_time)
+            
+            y_pred = model.predict(X_val_scaled, verbose=0)
+            r2 = r2_score(y_val, y_pred)
+            r2_scores.append(r2)
+            
+            print(f"Fold {fold} - R²: {r2:.4f}, Time: {training_time:.2f}s")
+            fold += 1
+        
+        # Train final model on all data
+        print("\nTraining final baseline model on all data...")
+        X_scaled = self.scaler.fit_transform(X)
+        
         latent_output = self.tabnet.output['latent']
         x = layers.Dense(32, activation='relu')(latent_output)
         x = layers.Dropout(0.3)(x)
         out = layers.Dense(1)(x)
-        model = models.Model(inputs=self.tabnet.input, outputs=out)
-        model.compile(
+        final_model = models.Model(inputs=self.tabnet.input, outputs=out)
+        final_model.compile(
             optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
             loss='mse',
             metrics=['mae']
         )
         
-        start_time = time.time()
-        model.fit(
-            X_train_scaled, y_train,
+        final_model.fit(
+            X_scaled, y,
             epochs=150,
             batch_size=16,
             verbose=0,
-            validation_data=(X_val_scaled, y_val),
+            validation_split=0.2,
             callbacks=[
                 tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True),
                 tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
             ]
         )
-        training_time = time.time() - start_time
-        
-        y_pred = model.predict(X_val_scaled, verbose=0)
-        r2 = r2_score(y_val, y_pred)
         
         return {
             "model": "TabNet Alone",
-            "r2_score": r2,
-            "training_time_sec": training_time
+            "r2_mean": np.mean(r2_scores),
+            "r2_std": np.std(r2_scores),
+            "training_time_mean": np.mean(training_times),
+            "k_folds": k_folds
         }
 
 if __name__ == "__main__":

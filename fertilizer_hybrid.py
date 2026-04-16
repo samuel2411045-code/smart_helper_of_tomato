@@ -6,7 +6,7 @@ from data_manager import DataManager
 from yield_hybrid import HybridYieldModel # Reusing TabNet logic
 import xgboost as xgb
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score
 from sklearn.utils.class_weight import compute_class_weight
 import time
@@ -20,8 +20,10 @@ class FertilizerRecommender:
         self.scaler = StandardScaler()
         self.le = LabelEncoder()
         
-    def train_recommender(self):
-        """Trains the fertilizer recommendation model using TabNet + XGBoost hybrid."""
+    def train_recommender(self, k_folds=5):
+        """Trains the fertilizer recommendation model using TabNet + XGBoost hybrid with K-Fold Cross Validation."""
+        print(f"Training fertilizer recommender with {k_folds}-fold cross-validation...")
+        
         dm = DataManager()
         df = dm.load_fertilizer_data()
         
@@ -43,21 +45,99 @@ class FertilizerRecommender:
         # Encode labels
         y_enc = self.le.fit_transform(y)
         
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_scaled, y_enc, test_size=0.2, random_state=42, stratify=y_enc
-        )
+        skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
         
-        # Compute class weights
-        class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+        accuracies = []
+        f1_scores = []
+        balanced_accs = []
+        training_times = []
         
-        start_time = time.time()
-        print("Training TabNet Feature Learner for Fertilizer...")
+        fold = 1
+        for train_idx, val_idx in skf.split(X_scaled, y_enc):
+            print(f"\n--- Fold {fold}/{k_folds} ---")
+            
+            X_train, X_val = X_scaled[train_idx], X_scaled[val_idx]
+            y_train, y_val = y_enc[train_idx], y_enc[val_idx]
+            
+            # Compute class weights
+            class_weights = compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
+            
+            start_time = time.time()
+            
+            # Train TabNet Feature Learner
+            targets = {
+                'latent': np.zeros((len(X_train), 128)),
+                'reconstruction': X_train
+            }
+            self.hybrid_yield_wrapper.tabnet.fit(
+                X_train, targets,
+                epochs=100,
+                batch_size=16,
+                verbose=0,
+                validation_split=0.2,
+                callbacks=[
+                    tf.keras.callbacks.EarlyStopping(
+                        monitor='val_loss', patience=10, restore_best_weights=True
+                    ),
+                    tf.keras.callbacks.ReduceLROnPlateau(
+                        monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6
+                    )
+                ]
+            )
+            
+            preds = self.hybrid_yield_wrapper.tabnet.predict(X_train)
+            X_train_feat = preds['latent'] if isinstance(preds, dict) else preds[0]
+            
+            preds_val = self.hybrid_yield_wrapper.tabnet.predict(X_val)
+            X_val_feat = preds_val['latent'] if isinstance(preds_val, dict) else preds_val[0]
+            
+            # Train XGBoost Classifier
+            clf = xgb.XGBClassifier(
+                n_estimators=500,
+                learning_rate=0.02,
+                max_depth=4,
+                subsample=0.80,
+                colsample_bytree=0.80,
+                min_child_weight=5,
+                gamma=0.4,
+                reg_alpha=0.1,
+                reg_lambda=1.5,
+                eval_metric='mlogloss',
+                random_state=42,
+                tree_method='hist'
+            )
+            
+            clf.fit(
+                X_train_feat, y_train,
+                sample_weight=[class_weights[int(y)] for y in y_train]
+            )
+            
+            training_time = time.time() - start_time
+            training_times.append(training_time)
+            
+            # Evaluate
+            y_pred = clf.predict(X_val_feat)
+            accuracy = accuracy_score(y_val, y_pred)
+            f1 = f1_score(y_val, y_pred, average='weighted')
+            balanced_acc = balanced_accuracy_score(y_val, y_pred)
+            
+            accuracies.append(accuracy)
+            f1_scores.append(f1)
+            balanced_accs.append(balanced_acc)
+            
+            print(f"Fold {fold} - Acc: {accuracy:.4f}, F1: {f1:.4f}, Bal Acc: {balanced_acc:.4f}, Time: {training_time:.2f}s")
+            fold += 1
+        
+        # Train final model on all data
+        print("\nTraining final fertilizer model on all data...")
+        class_weights = compute_class_weight('balanced', classes=np.unique(y_enc), y=y_enc)
+        
         targets = {
-            'latent': np.zeros((len(X_train), 128)),
-            'reconstruction': X_train
+            'latent': np.zeros((len(X_scaled), 128)),
+            'reconstruction': X_scaled
         }
         self.hybrid_yield_wrapper.tabnet.fit(
-            X_train, targets,
+            X_scaled, targets,
             epochs=100,
             batch_size=16,
             verbose=0,
@@ -72,49 +152,44 @@ class FertilizerRecommender:
             ]
         )
         
-        preds = self.hybrid_yield_wrapper.tabnet.predict(X_train)
-        X_train_feat = preds['latent'] if isinstance(preds, dict) else preds[0]
+        preds = self.hybrid_yield_wrapper.tabnet.predict(X_scaled)
+        X_feat = preds['latent'] if isinstance(preds, dict) else preds[0]
         
-        preds_val = self.hybrid_yield_wrapper.tabnet.predict(X_val)
-        X_val_feat = preds_val['latent'] if isinstance(preds_val, dict) else preds_val[0]
-        
-        print("Training XGBoost Classifier for Fertilizer with optimized parameters...")
-        clf = xgb.XGBClassifier(
+        final_clf = xgb.XGBClassifier(
             n_estimators=500,
             learning_rate=0.02,
-            max_depth=4,          # Reduced from 8 — prevents deep memorization
+            max_depth=4,
             subsample=0.80,
             colsample_bytree=0.80,
-            min_child_weight=5,   # Conservative splits
-            gamma=0.4,            # Stronger split penalty
-            reg_alpha=0.1,        # L1 regularization
-            reg_lambda=1.5,       # L2 regularization
+            min_child_weight=5,
+            gamma=0.4,
+            reg_alpha=0.1,
+            reg_lambda=1.5,
             eval_metric='mlogloss',
             random_state=42,
             tree_method='hist'
         )
         
-        clf.fit(
-            X_train_feat, y_train,
-            sample_weight=[class_weights[int(y)] for y in y_train]
+        final_clf.fit(
+            X_feat, y_enc,
+            sample_weight=[class_weights[int(y)] for y in y_enc]
         )
-        training_time = time.time() - start_time
         
-        y_pred = clf.predict(X_val_feat)
-        accuracy = accuracy_score(y_val, y_pred)
-        balanced_acc = balanced_accuracy_score(y_val, y_pred)
-        f1 = f1_score(y_val, y_pred, average='weighted', zero_division=0)
-        
-        joblib.dump(clf, os.path.join(self.save_path, "fert_xgb.joblib"))
-        joblib.dump(self.le, os.path.join(self.save_path, "fert_le.joblib"))
+        # Save models
+        joblib.dump(final_clf, os.path.join(self.save_path, "fert_xgb.joblib"))
         joblib.dump(self.scaler, os.path.join(self.save_path, "fert_scaler.joblib"))
+        joblib.dump(self.le, os.path.join(self.save_path, "fert_le.joblib"))
         
         return {
             "model": "TabNet + XGBoost",
-            "accuracy": accuracy,
-            "balanced_accuracy": balanced_acc,
-            "f1_score": f1,
-            "training_time_sec": training_time
+            "accuracy_mean": np.mean(accuracies),
+            "accuracy_std": np.std(accuracies),
+            "f1_mean": np.mean(f1_scores),
+            "f1_std": np.std(f1_scores),
+            "balanced_accuracy_mean": np.mean(balanced_accs),
+            "balanced_accuracy_std": np.std(balanced_accs),
+            "training_time_mean": np.mean(training_times),
+            "k_folds": k_folds
         }
 
     def get_recommendation(self, n, p, k, ph, rainfall, temperature, humidity, soil_type="Loamy", stage="Vegetative"):

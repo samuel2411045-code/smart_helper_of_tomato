@@ -23,8 +23,8 @@ def train_all():
     try:
         disease_model = HybridDiseaseModel()
         results["Disease Detection"] = {
-            "MobileNetV2 + XGBoost": disease_model.train_hybrid(data_dir),
-            "MobileNetV2 Alone": disease_model.train_baseline(data_dir)
+            "MobileNetV2 + XGBoost": disease_model.train_hybrid(data_dir, k_folds=5),
+            "MobileNetV2 Alone": disease_model.train_baseline(data_dir, k_folds=5)
         }
     except Exception:
         print("Disease training failed:")
@@ -42,8 +42,8 @@ def train_all():
         y_y = df_yield['yield_val'].values
         yield_model = HybridYieldModel(input_dim=len(features_y))
         results["Yield Prediction"] = {
-            "TabNet + XGBoost": yield_model.train_hybrid(X_y, y_y),
-            "TabNet Alone": yield_model.train_baseline(X_y, y_y)
+            "TabNet + XGBoost": yield_model.train_hybrid(X_y, y_y, k_folds=5),
+            "TabNet Alone": yield_model.train_baseline(X_y, y_y, k_folds=5)
         }
     except Exception:
         print("Yield training failed:")
@@ -58,8 +58,8 @@ def train_all():
         y_s = df_soil['soil_type'].values
         soil_model = HybridSoilModel()
         results["Soil Prediction"] = {
-            "RF + Gradient Boosting": soil_model.train_hybrid(X_s, y_s),
-            "Random Forest Alone": soil_model.train_baseline(X_s, y_s)
+            "RF + Gradient Boosting": soil_model.train_hybrid(X_s, y_s, k_folds=5),
+            "Random Forest Alone": soil_model.train_baseline(X_s, y_s, k_folds=5)
         }
     except Exception:
         print("Soil training failed:")
@@ -71,7 +71,7 @@ def train_all():
         df_fert = dm.load_fertilizer_data()
         fert_rec = FertilizerRecommender(input_dim=10) # upgraded to support new NPK interacting ratios
         results["Fertilizer Recommendation"] = {
-            "TabNet + XGBoost": fert_rec.train_recommender()
+            "TabNet + XGBoost": fert_rec.train_recommender(k_folds=5)
         }
     except Exception:
         print("Fertilizer training failed:")
@@ -87,7 +87,7 @@ def train_all():
         best_acc = 0
         best_model = ""
         for m_name, metrics in models.items():
-            acc = metrics.get('accuracy') or metrics.get('r2_score') or 0
+            acc = metrics.get('accuracy_mean') or metrics.get('accuracy') or metrics.get('r2_mean') or metrics.get('r2_score') or 0
             if acc > best_acc:
                 best_acc = acc
                 best_model = m_name
