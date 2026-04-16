@@ -13,29 +13,29 @@ from data_manager import DataManager
 class HybridSoilModel:
     def __init__(self):
         self.rf_model = RandomForestClassifier(
-            n_estimators=500,  # Increased from 300
-            max_depth=20,  # Optimized from 15
-            min_samples_split=4,  # Reduced for better splits
-            min_samples_leaf=1,  # Reduced for deeper capability
+            n_estimators=300,
+            max_depth=10,         # Reduced from 20 — prevents memorizing noise
+            min_samples_split=6,  # Require more samples to split a node
+            min_samples_leaf=5,   # Increased from 1 — smooths leaf predictions
             bootstrap=True,
-            class_weight='balanced',  # Added for imbalanced classes
-            max_features='sqrt',  # Optimized
+            class_weight='balanced',
+            max_features='sqrt',
             random_state=42,
-            n_jobs=-1,  # Parallel processing
+            n_jobs=-1,
             criterion='gini'
         )
         
         self.gb_model = GradientBoostingClassifier(
-            n_estimators=500,  # Increased from 300
-            learning_rate=0.02, # Lowered from 0.05
-            max_depth=6, # Increased from 5
-            min_samples_split=4,  # Reduced
-            min_samples_leaf=2,  # Reduced
-            subsample=0.85,  # Adjusted
-            max_features='sqrt',  # Added
+            n_estimators=300,
+            learning_rate=0.05,   # Slightly faster learning for shallower trees
+            max_depth=4,          # Reduced from 6
+            min_samples_split=8,  # More conservative splits
+            min_samples_leaf=5,   # Increased to prevent leaf overfitting
+            subsample=0.80,
+            max_features='sqrt',
             random_state=42,
-            validation_fraction=0.1,  # Added for early stopping
-            n_iter_no_change=15  # Increased patience for early stopping
+            validation_fraction=0.15,  # Larger validation fraction for more reliable early stopping
+            n_iter_no_change=20   # Increased patience
         )
         
         self.scaler = StandardScaler()

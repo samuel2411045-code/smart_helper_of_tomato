@@ -16,17 +16,17 @@ class HybridYieldModel:
         self.input_dim = input_dim
         self.tabnet = self._build_simplified_tabnet()
         self.xgb_model = xgb.XGBRegressor(
-            n_estimators=800,  # Increased from 500
-            learning_rate=0.015,  # Adjusted
-            max_depth=7,  # Increased depth
-            subsample=0.85,  # Adjusted
-            colsample_bytree=0.85,  # Adjusted
-            min_child_weight=2,  # Added
-            gamma=0.1,  # Added for regularization
-            alpha=0.05,  # L1 regularization increased
-            lambda_=1.5,  # L2 regularization increased
+            n_estimators=500,
+            learning_rate=0.02,
+            max_depth=4,          # Reduced from 7 — shallower trees generalize better
+            subsample=0.80,
+            colsample_bytree=0.80,
+            min_child_weight=5,   # Conservative splits
+            gamma=0.2,            # Minimum loss reduction
+            reg_alpha=0.1,        # L1 regularization
+            reg_lambda=2.0,       # L2 regularization (increased)
             random_state=42,
-            tree_method='hist'  # Fast histogram-based method
+            tree_method='hist'
         )
         self.scaler = StandardScaler()
         self.save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
@@ -36,23 +36,25 @@ class HybridYieldModel:
         """Improved TabNet-inspired feature learner using Keras."""
         inputs = layers.Input(shape=(self.input_dim,))
         
-        # Feature transformer (GLU-based) with more capacity
-        x = layers.Dense(256)(inputs)  # Increased from 128
+        l2_reg = tf.keras.regularizers.l2(1e-4)
+
+        # Feature transformer (GLU-based)
+        x = layers.Dense(256, kernel_regularizer=l2_reg)(inputs)
         x = layers.BatchNormalization()(x)
         x = layers.ReLU()(x)
         
         # Split for GLU
-        line = layers.Dense(128)(x)
-        gate = layers.Dense(128, activation='sigmoid')(x)
+        line = layers.Dense(128, kernel_regularizer=l2_reg)(x)
+        gate = layers.Dense(128, activation='sigmoid', kernel_regularizer=l2_reg)(x)
         glu = layers.Multiply()([line, gate])
         
-        # Attentive transformer (improved)
+        # Attentive transformer
         mask = layers.Dense(self.input_dim, activation='softmax')(glu)
         masked_features = layers.Multiply()([inputs, mask])
         
-        # Latent representation with dropout
-        latent = layers.Dense(128, activation='relu', name='latent')(masked_features)  # Increased from 64
-        latent = layers.Dropout(0.4)(latent)
+        # Latent representation with stronger dropout to fight overfitting
+        latent = layers.Dense(128, activation='relu', kernel_regularizer=l2_reg, name='latent')(masked_features)
+        latent = layers.Dropout(0.5)(latent)  # Increased from 0.4
         
         # Autoencoder head for pre-training
         reconstruction = layers.Dense(self.input_dim, name='reconstruction')(latent)

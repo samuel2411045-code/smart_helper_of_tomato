@@ -80,18 +80,18 @@ class FertilizerRecommender:
         
         print("Training XGBoost Classifier for Fertilizer with optimized parameters...")
         clf = xgb.XGBClassifier(
-            n_estimators=800,  # Increased
-            learning_rate=0.015,  # Adjusted
-            max_depth=8,  # Increased depth
-            subsample=0.85,
-            colsample_bytree=0.85,
-            min_child_weight=2,
-            gamma=0.1,  # Added regularization
-            alpha=0.05,
-            lambda_=1.5,
+            n_estimators=500,
+            learning_rate=0.02,
+            max_depth=4,          # Reduced from 8 — prevents deep memorization
+            subsample=0.80,
+            colsample_bytree=0.80,
+            min_child_weight=5,   # Conservative splits
+            gamma=0.4,            # Stronger split penalty
+            reg_alpha=0.1,        # L1 regularization
+            reg_lambda=1.5,       # L2 regularization
             eval_metric='mlogloss',
             random_state=42,
-            tree_method='hist'  # Fast histogram-based method
+            tree_method='hist'
         )
         
         clf.fit(

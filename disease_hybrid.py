@@ -17,17 +17,18 @@ class HybridDiseaseModel:
         self.num_classes = num_classes
         self.base_model = MobileNetV2(weights='imagenet', include_top=False, input_shape=(224, 224, 3), pooling='avg')
         self.xgb_model = xgb.XGBClassifier(
-            n_estimators=800,  # Increased from 500 for better accuracy
-            learning_rate=0.015,  # Adjusted learning rate
-            max_depth=8,  # Increased depth
-            subsample=0.85,  # Optimized
-            colsample_bytree=0.85,  # Optimized
-            min_child_weight=2,  # Added
-            gamma=0.1,  # Added regularization
-            use_label_encoder=False,
+            n_estimators=500,
+            learning_rate=0.02,
+            max_depth=5,          # Reduced from 8 — prevents overfitting deep trees
+            subsample=0.80,
+            colsample_bytree=0.80,
+            min_child_weight=5,   # Higher value = more conservative splits
+            gamma=0.4,            # Stronger minimum loss reduction to split
+            reg_alpha=0.1,        # L1 regularization — sparsifies weights
+            reg_lambda=1.5,       # L2 regularization — penalizes large weights
             eval_metric='mlogloss',
-            random_state=42,  # Added for reproducibility
-            tree_method='hist'  # Fast histogram-based method
+            random_state=42,
+            tree_method='hist'
         )
         self.save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
         os.makedirs(self.save_path, exist_ok=True)
@@ -46,14 +47,16 @@ class HybridDiseaseModel:
         datagen = ImageDataGenerator(
             rescale=1./255,
             validation_split=0.2,
-            rotation_range=30,  # Increased
-            width_shift_range=0.25,  # Increased
-            height_shift_range=0.25,  # Increased
-            shear_range=0.25,  # Increased
-            zoom_range=0.3,  # Increased
-            horizontal_flip=True,  #
-            brightness_range=[0.8, 1.2], # Added brightness augmentation
-            fill_mode='nearest'  #
+            rotation_range=25,
+            width_shift_range=0.2,
+            height_shift_range=0.2,
+            shear_range=0.2,
+            zoom_range=0.25,
+            horizontal_flip=True,
+            vertical_flip=False,
+            brightness_range=[0.75, 1.25],  # Robust to lighting changes
+            channel_shift_range=20.0,       # Color channel robustness
+            fill_mode='reflect'             # Better edge handling than 'nearest'
         )
         
         train_gen = datagen.flow_from_directory(
@@ -68,9 +71,10 @@ class HybridDiseaseModel:
         X_train, y_train = self.extract_features(train_gen)
         X_val, y_val = self.extract_features(val_gen)
         
-        # Normalize features
-        X_train = (X_train - X_train.mean()) / (X_train.std() + 1e-8)
-        X_val = (X_val - X_val.mean()) / (X_val.std() + 1e-8)
+        # Normalize features using train stats only (prevent data leakage)
+        train_mean, train_std = X_train.mean(axis=0), X_train.std(axis=0) + 1e-8
+        X_train = (X_train - train_mean) / train_std
+        X_val = (X_val - train_mean) / train_std
         
         # Unfreeze last few layers of MobileNetV2 for feature fine-tuning
         for layer in self.base_model.layers[-30:]:
