@@ -5,6 +5,7 @@ import os
 import json
 import joblib
 import time
+import io
 from PIL import Image
 from datetime import date, timedelta
 import weather
@@ -640,7 +641,12 @@ if st.session_state.selected_nav == "fertilizer":
             st.info(get_text("ocr_msg"))
             try:
                 # Real OCR Extraction using utils from tomato_ai_app integration
-                card_data = ocr_utils.extract_soil_values(img)
+                if health_card_img.type == "application/pdf":
+                    st.error("PDF processing not implemented yet. Please upload an image.")
+                    card_data = ocr_utils.extract_soil_values(Image.new('RGB', (1, 1)))  # dummy
+                else:
+                    img = Image.open(io.BytesIO(health_card_img.read()))
+                    card_data = ocr_utils.extract_soil_values(img)
                 n_val = int(card_data.n)
                 p_val = int(card_data.p)
                 k_val = int(card_data.k)

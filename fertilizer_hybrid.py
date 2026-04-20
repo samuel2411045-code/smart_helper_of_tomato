@@ -3,20 +3,20 @@ import joblib
 import pandas as pd
 import numpy as np
 from data_manager import DataManager
-from yield_hybrid import HybridYieldModel # Reusing TabNet logic
+# from yield_hybrid import HybridYieldModel # Reusing TabNet logic - commented out for inference only
 import xgboost as xgb
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import accuracy_score, f1_score, balanced_accuracy_score
 from sklearn.utils.class_weight import compute_class_weight
 import time
-import tensorflow as tf
-from tensorflow.keras import layers, models
+# import tensorflow as tf
+# from tensorflow.keras import layers, models
 
 class FertilizerRecommender:
     def __init__(self, input_dim=10): # N, P, K, temp, hum, pH, rainfall + 3 NPK ratios
         self.save_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
-        self.hybrid_yield_wrapper = HybridYieldModel(input_dim=input_dim)
+        # self.hybrid_yield_wrapper = HybridYieldModel(input_dim=input_dim)  # Commented out for inference
         self.scaler = StandardScaler()
         self.le = LabelEncoder()
         

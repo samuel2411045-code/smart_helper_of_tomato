@@ -1,8 +1,8 @@
 import os
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-from tensorflow.keras import layers, models
+import keras
+from keras import layers, models
 import xgboost as xgb
 from sklearn.model_selection import train_test_split, cross_val_score, KFold
 from sklearn.preprocessing import StandardScaler, RobustScaler
@@ -36,7 +36,7 @@ class HybridYieldModel:
         """Improved TabNet-inspired feature learner using Keras."""
         inputs = layers.Input(shape=(self.input_dim,))
         
-        l2_reg = tf.keras.regularizers.l2(1e-4)
+        l2_reg = keras.regularizers.l2(1e-4)
 
         # Feature transformer (GLU-based)
         x = layers.Dense(256, kernel_regularizer=l2_reg)(inputs)
@@ -61,7 +61,7 @@ class HybridYieldModel:
         
         model = models.Model(inputs=inputs, outputs={'latent': latent, 'reconstruction': reconstruction})
         model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+            optimizer=keras.optimizers.Adam(learning_rate=0.001),
             loss={'latent': 'mse', 'reconstruction': 'mse'},
             loss_weights={'latent': 0, 'reconstruction': 1}
         )
@@ -103,8 +103,8 @@ class HybridYieldModel:
                 verbose=0,
                 validation_split=0.2,
                 callbacks=[
-                    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-                    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                    keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
+                    keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
                 ]
             )
             
@@ -148,8 +148,8 @@ class HybridYieldModel:
             verbose=0,
             validation_split=0.2,
             callbacks=[
-                tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
-                tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True),
+                keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
             ]
         )
         
@@ -202,7 +202,7 @@ class HybridYieldModel:
             out = layers.Dense(1)(x)
             model = models.Model(inputs=self.tabnet.input, outputs=out)
             model.compile(
-                optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+                optimizer=keras.optimizers.Adam(learning_rate=0.001),
                 loss='mse',
                 metrics=['mae']
             )
@@ -215,8 +215,8 @@ class HybridYieldModel:
                 verbose=0,
                 validation_data=(X_val_scaled, y_val),
                 callbacks=[
-                    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True),
-                    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                    keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True),
+                    keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
                 ]
             )
             training_time = time.time() - start_time
@@ -239,7 +239,7 @@ class HybridYieldModel:
         out = layers.Dense(1)(x)
         final_model = models.Model(inputs=self.tabnet.input, outputs=out)
         final_model.compile(
-            optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+            optimizer=keras.optimizers.Adam(learning_rate=0.001),
             loss='mse',
             metrics=['mae']
         )
@@ -251,8 +251,8 @@ class HybridYieldModel:
             verbose=0,
             validation_split=0.2,
             callbacks=[
-                tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True),
-                tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
+                keras.callbacks.EarlyStopping(monitor='val_loss', patience=15, restore_best_weights=True),
+                keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
             ]
         )
         
